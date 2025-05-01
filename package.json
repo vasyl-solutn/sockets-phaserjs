@@ -1,0 +1,16 @@
+{
+  "name": "phaser-game-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "start": "concurrently \"yarn workspace @phaser-game/server start\" \"yarn workspace @phaser-game/client start\"",
+    "dev": "concurrently \"yarn workspace @phaser-game/server dev\" \"yarn workspace @phaser-game/client start\"",
+    "build": "yarn workspace @phaser-game/client build"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0"
+  }
+}
