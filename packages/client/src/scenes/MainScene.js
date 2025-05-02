@@ -92,6 +92,9 @@ export class MainScene extends Phaser.Scene {
           this.warrior.anims.play('right', true);
         }
 
+        // Send click coordinates to backend
+        this.sendCoordinatesToBackend(pointer.x, pointer.y);
+
         // Example of what we'd do with sockets when enabled
         /*
         if (this.socket) {
@@ -119,6 +122,25 @@ export class MainScene extends Phaser.Scene {
       fill: '#ff8800',
       fontStyle: 'bold'
     });
+  }
+
+  sendCoordinatesToBackend(x, y) {
+    // Create data object with coordinates
+    const data = {
+      x: Math.round(x),
+      y: Math.round(y),
+      timestamp: Date.now(),
+      playerId: 'player1' // In a real game, this would be the actual player ID
+    };
+
+    // Send data to backend
+    axios.post(`${API_URL}/api/coordinates`, data)
+      .then(response => {
+        console.log('Coordinates sent to server:', response.data);
+      })
+      .catch(error => {
+        console.error('Failed to send coordinates:', error);
+      });
   }
 
   startCooldown() {

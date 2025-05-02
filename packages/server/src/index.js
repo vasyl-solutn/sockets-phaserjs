@@ -21,6 +21,32 @@ app.get('/api/status', (req, res) => {
   res.json({ status: 'ok', message: 'Server is running' });
 });
 
+// Endpoint to receive coordinates
+app.post('/api/coordinates', (req, res) => {
+  const coordinates = req.body;
+
+  // Log the coordinates in the server console
+  console.log('Received coordinates:', coordinates);
+
+  // Store coordinates in memory (could be a database in a real app)
+  if (!app.locals.coordinates) {
+    app.locals.coordinates = [];
+  }
+  app.locals.coordinates.push(coordinates);
+
+  // Return a confirmation
+  res.json({
+    success: true,
+    message: 'Coordinates received',
+    data: coordinates
+  });
+});
+
+// Endpoint to get all stored coordinates (for debugging)
+app.get('/api/coordinates', (req, res) => {
+  res.json(app.locals.coordinates || []);
+});
+
 // Socket.io connection handling
 io.on('connection', (socket) => {
   console.log('A user connected:', socket.id);
