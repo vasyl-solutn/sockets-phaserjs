@@ -38,6 +38,8 @@ yarn workspace @phaser-game/server dev
 yarn workspace @phaser-game/client start
 ```
 
+The client will run on http://localhost:4000 and the server on http://localhost:3002.
+
 ### Production
 
 ```bash

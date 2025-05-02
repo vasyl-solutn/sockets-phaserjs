@@ -22,7 +22,7 @@ const config = {
 const game = new Phaser.Game(config);
 
 // Optional: Setup for API and Socket connections
-const API_URL = 'http://localhost:3001';
+const API_URL = 'http://localhost:3002';
 
 // Export for use in other files
 export { game, API_URL };
