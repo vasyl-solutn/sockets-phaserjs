@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { API_URL } from '../main';
 import axios from 'axios';
+import { io } from 'socket.io-client';
 
 export class MainScene extends Phaser.Scene {
   constructor() {
@@ -15,6 +16,8 @@ export class MainScene extends Phaser.Scene {
     this.cooldownText = null;
     this.cooldownTime = 1400; // 1400 milliseconds
     this.remainingCooldown = 0;
+    this.otherClicks = {}; // Store other players' click markers
+    this.playerId = 'player_' + Math.floor(Math.random() * 10000); // Generate random player ID
   }
 
   init() {
@@ -27,19 +30,20 @@ export class MainScene extends Phaser.Scene {
         console.error('Failed to connect to server:', error);
       });
 
-    // Setup socket connection (commented out until we're ready to use it)
-    /*
+    // Setup socket connection
     this.socket = io(API_URL);
 
     this.socket.on('connect', () => {
-      console.log('Connected to socket server');
+      console.log('Connected to socket server with ID:', this.socket.id);
+      // Update our playerId with the socket ID
+      this.playerId = this.socket.id;
     });
 
-    this.socket.on('playerMoved', (playerInfo) => {
-      // Update other players
-      console.log('Player moved:', playerInfo);
+    // Listen for other players' clicks
+    this.socket.on('otherClick', (clickData) => {
+      console.log('Other player clicked:', clickData);
+      this.showOtherPlayerClick(clickData);
     });
-    */
   }
 
   create() {
@@ -95,15 +99,17 @@ export class MainScene extends Phaser.Scene {
         // Send click coordinates to backend
         this.sendCoordinatesToBackend(pointer.x, pointer.y);
 
-        // Example of what we'd do with sockets when enabled
-        /*
-        if (this.socket) {
-          this.socket.emit('playerMove', {
+        // Emit click event to other players via Socket.io
+        if (this.socket && this.socket.connected) {
+          const clickData = {
             x: pointer.x,
-            y: pointer.y
-          });
+            y: pointer.y,
+            playerId: this.playerId,
+            timestamp: Date.now(),
+            color: 0xff8800 // Orange color for other players' clicks
+          };
+          this.socket.emit('playerClick', clickData);
         }
-        */
 
         // Start cooldown
         this.startCooldown();
@@ -116,11 +122,75 @@ export class MainScene extends Phaser.Scene {
       fill: '#ffffff'
     });
 
+    // Add socket status text
+    this.statusText = this.add.text(16, 70, 'Socket status: Connecting...', {
+      font: '14px Arial',
+      fill: '#ffffff'
+    });
+
+    // Update socket status periodically
+    this.time.addEvent({
+      delay: 2000,
+      callback: () => this.updateSocketStatus(),
+      callbackScope: this,
+      loop: true
+    });
+
     // Add cooldown text
     this.cooldownText = this.add.text(16, 40, '', {
       font: '24px Arial',
       fill: '#ff8800',
       fontStyle: 'bold'
+    });
+  }
+
+  updateSocketStatus() {
+    if (this.socket) {
+      if (this.socket.connected) {
+        this.statusText.setText(`Socket status: Connected (ID: ${this.socket.id})`);
+        this.statusText.setColor('#00ff00');
+      } else {
+        this.statusText.setText('Socket status: Disconnected');
+        this.statusText.setColor('#ff0000');
+      }
+    }
+  }
+
+  showOtherPlayerClick(clickData) {
+    // Create a visual representation of another player's click
+    const otherClick = this.add.circle(clickData.x, clickData.y, 15, clickData.color || 0xff0000, 0.6)
+      .setDepth(4)
+      .setAlpha(0.8);
+
+    // Add a player ID text near the click
+    const otherPlayerText = this.add.text(
+      clickData.x,
+      clickData.y - 20,
+      `Player: ${clickData.playerId.substring(0, 5)}...`,
+      {
+        font: '12px Arial',
+        fill: '#ffffff',
+        backgroundColor: '#000000'
+      }
+    ).setOrigin(0.5, 0.5).setDepth(4).setAlpha(0.8);
+
+    // Store references to clean up later
+    const clickId = clickData.playerId + '_' + clickData.timestamp;
+    this.otherClicks[clickId] = {
+      circle: otherClick,
+      text: otherPlayerText
+    };
+
+    // Fade out and remove after 2 seconds
+    this.tweens.add({
+      targets: [otherClick, otherPlayerText],
+      alpha: 0,
+      duration: 2000,
+      onComplete: () => {
+        otherClick.destroy();
+        otherPlayerText.destroy();
+        delete this.otherClicks[clickId];
+      }
     });
   }
 
@@ -130,7 +200,7 @@ export class MainScene extends Phaser.Scene {
       x: Math.round(x),
       y: Math.round(y),
       timestamp: Date.now(),
-      playerId: 'player1' // In a real game, this would be the actual player ID
+      playerId: this.playerId
     };
 
     // Send data to backend
