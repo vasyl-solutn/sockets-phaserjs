@@ -26,7 +26,6 @@ export class Barrier extends Phaser.Physics.Arcade.Sprite {
     scene.physics.add.existing(this, true); // true = static body (completely immovable)
 
     // Set up physics properties
-    this.setCollideWorldBounds(true);
     this.setBounce(0);
     this.setImmovable(true);
 

@@ -2,6 +2,10 @@ import Phaser from 'phaser';
 import { MainScene } from './scenes/MainScene';
 import { BootScene } from './scenes/BootScene';
 
+// Enable physics debugging with URL parameter
+const urlParams = new URLSearchParams(window.location.search);
+const debugPhysics = urlParams.has('debug');
+
 // Game configuration
 const config = {
   type: Phaser.AUTO,
@@ -12,7 +16,7 @@ const config = {
     default: 'arcade',
     arcade: {
       gravity: { y: 300 },
-      debug: false
+      debug: debugPhysics
     }
   },
   scene: [BootScene, MainScene]

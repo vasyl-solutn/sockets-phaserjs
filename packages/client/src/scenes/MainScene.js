@@ -84,9 +84,16 @@ export class MainScene extends Phaser.Scene {
     this.physics.add.collider(this.warrior, this.barriers, this.handleBarrierCollision, null, this);
 
     // Create barrier instances at different positions with different health
-    this.createBarrier(200, 400, 'weak', 5);
-    this.createBarrier(400, 400, 'medium', 15);
-    this.createBarrier(600, 400, 'strong', 30);
+    // First row
+    this.createBarrier(200, 200, 'weak', 5);
+    this.createBarrier(400, 200, 'medium', 15);
+    this.createBarrier(600, 200, 'strong', 30);
+
+    // Second row
+    this.createBarrier(150, 350, 'strong', 25);
+    this.createBarrier(300, 350, 'weak', 8);
+    this.createBarrier(450, 350, 'medium', 20);
+    this.createBarrier(650, 350, 'strong', 35);
 
     // Create line for movement visualization
     this.movementLine = this.add.graphics();
@@ -186,6 +193,8 @@ export class MainScene extends Phaser.Scene {
   createBarrier(x, y, type, health) {
     const barrier = new Barrier(this, x, y, type, health);
     this.barriers.add(barrier);
+    // Make sure the barrier is properly added to the physics world
+    this.physics.add.existing(barrier, true);
     return barrier;
   }
 
@@ -274,16 +283,24 @@ export class MainScene extends Phaser.Scene {
     // Calculate bounce strength based on barrier's remaining health
     const bounceStrength = barrier.getStrength();
 
-    // Bounce the warrior back proportional to barrier strength
-    const bounceForce = 300 + (bounceStrength * 30);
-    warrior.setVelocity(
-      -warrior.moveDirection.x * bounceForce,
-      -warrior.moveDirection.y * bounceForce * 0.5
-    );
+    // Only bounce if the barrier wasn't destroyed
+    if (!wasDestroyed) {
+      // Bounce the warrior back proportional to barrier strength
+      const bounceForce = 300 + (bounceStrength * 30);
+      warrior.setVelocity(
+        -warrior.moveDirection.x * bounceForce,
+        -warrior.moveDirection.y * bounceForce * 0.5
+      );
 
-    // Add a short stun effect that stops movement
-    warrior.stunned = true;
-    this.isMovingToTarget = false;
+      // Add a short stun effect that stops movement
+      warrior.stunned = true;
+      this.isMovingToTarget = false;
+
+      // Remove stun after a short delay
+      this.time.delayedCall(300, () => {
+        warrior.stunned = false;
+      });
+    }
 
     // Show damage text
     this.showDamageText(barrier.x, barrier.y - 20, damage);
@@ -297,11 +314,6 @@ export class MainScene extends Phaser.Scene {
     // Shake camera based on impact strength
     const shakeIntensity = Math.min(0.01 * bounceStrength, 0.05);
     this.cameras.main.shake(300, shakeIntensity);
-
-    // Remove stun after a short delay
-    this.time.delayedCall(300, () => {
-      warrior.stunned = false;
-    });
   }
 
   createImpactEffect(x, y, strength) {

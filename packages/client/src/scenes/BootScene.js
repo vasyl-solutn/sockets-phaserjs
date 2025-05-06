@@ -38,6 +38,18 @@ export class BootScene extends Phaser.Scene {
       );
     });
 
+    // Handle loading errors
+    this.load.on('loaderror', (file) => {
+      console.error('Error loading file:', file.src);
+      // Show error message
+      this.add.text(
+        this.cameras.main.width / 2,
+        this.cameras.main.height / 2 + 100,
+        'Error loading assets. Please refresh.',
+        { font: '16px Arial', fill: '#ff0000' }
+      ).setOrigin(0.5);
+    });
+
     // Clean up on complete
     this.load.on('complete', () => {
       progressBar.destroy();
@@ -45,7 +57,7 @@ export class BootScene extends Phaser.Scene {
       loadingText.destroy();
     });
 
-    // Load game assets
+    // Load game assets from Phaser.io CDN
     this.load.image('sky', 'https://labs.phaser.io/assets/skies/space3.png');
     this.load.image('logo', 'https://labs.phaser.io/assets/sprites/phaser3-logo.png');
     this.load.image('red', 'https://labs.phaser.io/assets/particles/red.png');
@@ -55,6 +67,25 @@ export class BootScene extends Phaser.Scene {
       'https://labs.phaser.io/assets/sprites/dude.png',
       { frameWidth: 32, frameHeight: 48 }
     );
+
+    // Load barrier sprites
+    this.load.image('barrier-weak', 'https://labs.phaser.io/assets/sprites/orb-blue.png');
+    this.load.image('barrier-medium', 'https://labs.phaser.io/assets/sprites/orb-green.png');
+    this.load.image('barrier-strong', 'https://labs.phaser.io/assets/sprites/orb-red.png');
+
+    // Add timeout for loading
+    this.load.on('loaderror', () => {
+      this.time.delayedCall(5000, () => {
+        if (!this.scene.isActive('MainScene')) {
+          this.add.text(
+            this.cameras.main.width / 2,
+            this.cameras.main.height / 2 + 150,
+            'Loading timeout. Please check your internet connection and refresh.',
+            { font: '16px Arial', fill: '#ff0000' }
+          ).setOrigin(0.5);
+        }
+      });
+    });
   }
 
   create() {
@@ -79,6 +110,9 @@ export class BootScene extends Phaser.Scene {
       repeat: -1
     });
 
-    this.scene.start('MainScene');
+    // Add a small delay before starting the main scene
+    this.time.delayedCall(500, () => {
+      this.scene.start('MainScene');
+    });
   }
 }
