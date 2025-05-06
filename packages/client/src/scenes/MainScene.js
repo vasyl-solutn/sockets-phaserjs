@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { API_URL } from '../main';
 import axios from 'axios';
 import { io } from 'socket.io-client';
+import { Barrier } from '../objects/Barrier';
 
 export class MainScene extends Phaser.Scene {
   constructor() {
@@ -18,6 +19,8 @@ export class MainScene extends Phaser.Scene {
     this.remainingCooldown = 0;
     this.otherClicks = {}; // Store other players' click markers
     this.playerId = 'player_' + Math.floor(Math.random() * 10000); // Generate random player ID
+    this.barriers = null;
+    this.movementLine = null;
   }
 
   init() {
@@ -58,6 +61,9 @@ export class MainScene extends Phaser.Scene {
       lifespan: 300
     });
 
+    // Create barriers group
+    this.barriers = this.physics.add.staticGroup();
+
     // Add warrior character
     this.warrior = this.physics.add.sprite(400, 300, 'warrior');
     this.warrior.setBounce(0.2);
@@ -74,6 +80,17 @@ export class MainScene extends Phaser.Scene {
     // Set up collision between warrior and ground
     this.physics.add.collider(this.warrior, ground);
 
+    // Set up collision between warrior and barriers
+    this.physics.add.collider(this.warrior, this.barriers, this.handleBarrierCollision, null, this);
+
+    // Create barrier instances at different positions with different health
+    this.createBarrier(200, 400, 'weak', 5);
+    this.createBarrier(400, 400, 'medium', 15);
+    this.createBarrier(600, 400, 'strong', 30);
+
+    // Create line for movement visualization
+    this.movementLine = this.add.graphics();
+
     // Create cursor keys for controls
     this.cursors = this.input.keyboard.createCursorKeys();
 
@@ -83,6 +100,22 @@ export class MainScene extends Phaser.Scene {
         // Set target position for warrior to move to
         this.targetPosition = { x: pointer.x, y: pointer.y };
         this.isMovingToTarget = true;
+
+        // Calculate distance for damage calculation
+        const distance = Phaser.Math.Distance.Between(
+          this.warrior.x, this.warrior.y,
+          pointer.x, pointer.y
+        );
+
+        // Draw movement line
+        this.drawMovementLine(this.warrior.x, this.warrior.y, pointer.x, pointer.y, distance);
+
+        // Store distance for barrier collision calculations
+        this.warrior.moveDistance = distance;
+        this.warrior.moveDirection = new Phaser.Math.Vector2(
+          pointer.x - this.warrior.x,
+          pointer.y - this.warrior.y
+        ).normalize();
 
         // Create a small effect at the click position
         this.add.circle(pointer.x, pointer.y, 10, 0xffff00, 0.5)
@@ -122,8 +155,14 @@ export class MainScene extends Phaser.Scene {
       fill: '#ffffff'
     });
 
+    // Add barrier instruction text
+    this.add.text(16, 40, 'Hit barriers to destroy them! Damage depends on movement distance.', {
+      font: '14px Arial',
+      fill: '#ffffff'
+    });
+
     // Add socket status text
-    this.statusText = this.add.text(16, 70, 'Socket status: Connecting...', {
+    this.statusText = this.add.text(16, 90, 'Socket status: Connecting...', {
       font: '14px Arial',
       fill: '#ffffff'
     });
@@ -137,10 +176,166 @@ export class MainScene extends Phaser.Scene {
     });
 
     // Add cooldown text
-    this.cooldownText = this.add.text(16, 40, '', {
+    this.cooldownText = this.add.text(16, 120, '', {
       font: '24px Arial',
       fill: '#ff8800',
       fontStyle: 'bold'
+    });
+  }
+
+  createBarrier(x, y, type, health) {
+    const barrier = new Barrier(this, x, y, type, health);
+    this.barriers.add(barrier);
+    return barrier;
+  }
+
+  drawMovementLine(startX, startY, endX, endY, distance) {
+    // Clear previous line
+    this.movementLine.clear();
+
+    // Define color based on distance (green for short, yellow for medium, red for long)
+    let color;
+    if (distance < 200) {
+      color = 0x00ff00; // Green for short distance
+    } else if (distance < 400) {
+      color = 0xffff00; // Yellow for medium distance
+    } else {
+      color = 0xff0000; // Red for long distance
+    }
+
+    // Draw dashed line
+    this.movementLine.lineStyle(2, color, 0.8);
+    this.movementLine.beginPath();
+    this.movementLine.moveTo(startX, startY);
+    this.movementLine.lineTo(endX, endY);
+    this.movementLine.closePath();
+    this.movementLine.strokePath();
+
+    // Add distance text
+    const midX = (startX + endX) / 2;
+    const midY = (startY + endY) / 2;
+
+    // Remove previous distance text if it exists
+    if (this.distanceText) {
+      this.distanceText.destroy();
+    }
+
+    // Create new distance text
+    this.distanceText = this.add.text(midX, midY - 15, `${Math.round(distance)}px`, {
+      font: '14px Arial',
+      fill: '#ffffff',
+      backgroundColor: '#000000',
+      padding: { x: 3, y: 2 }
+    }).setOrigin(0.5, 0.5);
+
+    // Fade out line and text
+    this.tweens.add({
+      targets: [this.distanceText],
+      alpha: 0,
+      delay: 1500,
+      duration: 500,
+      onComplete: () => {
+        if (this.distanceText) this.distanceText.destroy();
+        this.distanceText = null;
+      }
+    });
+
+    // Fade out the line
+    this.time.delayedCall(2000, () => {
+      this.movementLine.clear();
+    });
+  }
+
+  handleBarrierCollision(warrior, barrier) {
+    if (!warrior.moveDistance) return;
+
+    // Calculate damage based on move distance
+    let damage;
+    if (warrior.moveDistance < 200) {
+      // Short distance = small damage
+      damage = 2;
+    } else if (warrior.moveDistance < 400) {
+      // Medium distance = medium damage
+      damage = 8;
+    } else {
+      // Long distance = large damage
+      damage = 15;
+    }
+
+    // Calculate hit velocity for damage calculation
+    const hitVelocity = {
+      x: warrior.moveDirection.x * warrior.moveDistance * 0.1,
+      y: warrior.moveDirection.y * warrior.moveDistance * 0.1
+    };
+
+    // Apply damage to barrier and get whether it was destroyed
+    const wasDestroyed = barrier.takeDamage(damage, hitVelocity);
+
+    // Calculate bounce strength based on barrier's remaining health
+    const bounceStrength = barrier.getStrength();
+
+    // Bounce the warrior back proportional to barrier strength
+    const bounceForce = 300 + (bounceStrength * 30);
+    warrior.setVelocity(
+      -warrior.moveDirection.x * bounceForce,
+      -warrior.moveDirection.y * bounceForce * 0.5
+    );
+
+    // Add a short stun effect that stops movement
+    warrior.stunned = true;
+    this.isMovingToTarget = false;
+
+    // Show damage text
+    this.showDamageText(barrier.x, barrier.y - 20, damage);
+
+    // Reset warrior move distance
+    warrior.moveDistance = 0;
+
+    // Create impact effect
+    this.createImpactEffect(warrior.x, warrior.y, bounceStrength);
+
+    // Shake camera based on impact strength
+    const shakeIntensity = Math.min(0.01 * bounceStrength, 0.05);
+    this.cameras.main.shake(300, shakeIntensity);
+
+    // Remove stun after a short delay
+    this.time.delayedCall(300, () => {
+      warrior.stunned = false;
+    });
+  }
+
+  createImpactEffect(x, y, strength) {
+    // Create an impact particle effect
+    const particles = this.add.particles(0, 0, 'red', {
+      x: x,
+      y: y,
+      speed: { min: 50, max: 150 },
+      scale: { start: 0.4, end: 0 },
+      lifespan: 300,
+      blendMode: 'ADD',
+      quantity: Math.min(5 + strength, 15)
+    });
+
+    // Stop emitting after a short burst
+    this.time.delayedCall(100, () => {
+      particles.destroy();
+    });
+  }
+
+  showDamageText(x, y, amount) {
+    // Create damage text that floats up
+    const damageText = this.add.text(x, y, `-${amount}`, {
+      font: 'bold 16px Arial',
+      fill: '#ff0000'
+    }).setOrigin(0.5, 0.5);
+
+    // Animate the text upward and fade out
+    this.tweens.add({
+      targets: damageText,
+      y: y - 40,
+      alpha: 0,
+      duration: 1000,
+      onComplete: () => damageText.destroy()
     });
   }
 
@@ -268,7 +463,7 @@ export class MainScene extends Phaser.Scene {
 
   update() {
     // Handle click/tap movement
-    if (this.isMovingToTarget && this.targetPosition) {
+    if (this.isMovingToTarget && this.targetPosition && !this.warrior.stunned) {
       // Calculate distance from warrior to target
       const distance = Phaser.Math.Distance.Between(
         this.warrior.x, this.warrior.y,
@@ -303,27 +498,36 @@ export class MainScene extends Phaser.Scene {
     const keyD = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D);
     const keyW = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W);
 
-    // Handle keyboard movement with WASD
-    if (keyA.isDown) {
-      this.warrior.setVelocityX(-160);
-      this.warrior.anims.play('left', true);
-      this.isMovingToTarget = false; // Cancel click movement
-    }
-    else if (keyD.isDown) {
-      this.warrior.setVelocityX(160);
-      this.warrior.anims.play('right', true);
-      this.isMovingToTarget = false; // Cancel click movement
-    }
-    else if (!this.isMovingToTarget) {
-      // Only stop if not moving to target
-      this.warrior.setVelocityX(0);
-      this.warrior.anims.play('turn');
+    // Handle keyboard movement with WASD (only if not stunned)
+    if (!this.warrior.stunned) {
+      if (keyA.isDown) {
+        this.warrior.setVelocityX(-160);
+        this.warrior.anims.play('left', true);
+        this.isMovingToTarget = false; // Cancel click movement
+      }
+      else if (keyD.isDown) {
+        this.warrior.setVelocityX(160);
+        this.warrior.anims.play('right', true);
+        this.isMovingToTarget = false; // Cancel click movement
+      }
+      else if (!this.isMovingToTarget) {
+        // Only stop if not moving to target
+        this.warrior.setVelocityX(0);
+        this.warrior.anims.play('turn');
+      }
+
+      // Jump when W key is pressed and warrior is on ground
+      if (keyW.isDown && this.warrior.body.touching.down) {
+        this.warrior.setVelocityY(-330);
+        this.isMovingToTarget = false; // Cancel click movement
+      }
     }
 
-    // Jump when W key is pressed and warrior is on ground
-    if (keyW.isDown && this.warrior.body.touching.down) {
-      this.warrior.setVelocityY(-330);
-      this.isMovingToTarget = false; // Cancel click movement
-    }
+    // Update all barrier health bars
+    this.barriers.getChildren().forEach(barrier => {
+      if (barrier.updateHealthBar) {
+        barrier.updateHealthBar();
+      }
+    });
   }
 }
