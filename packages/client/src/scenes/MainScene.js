@@ -21,9 +21,24 @@ export class MainScene extends Phaser.Scene {
     this.playerId = 'player_' + Math.floor(Math.random() * 10000); // Generate random player ID
     this.barriers = null;
     this.movementLine = null;
+    this.startTime = 0;
+    this.timerText = null;
+    // Convert bestTime to number and handle invalid values
+    const savedTime = localStorage.getItem('bestTime');
+    this.bestTime = savedTime ? parseFloat(savedTime) : Infinity;
+    this.bestTimeText = null;
   }
 
   init() {
+    // Reset movement-related variables
+    this.targetPosition = null;
+    this.isMovingToTarget = false;
+    this.canClick = true;
+    this.remainingCooldown = 0;
+    this.warrior = null;
+    this.barriers = null;
+    this.movementLine = null;
+
     // Test API connection
     axios.get(`${API_URL}/api/status`)
       .then(response => {
@@ -50,6 +65,21 @@ export class MainScene extends Phaser.Scene {
   }
 
   create() {
+    // Start the timer
+    this.startTime = Date.now();
+
+    // Add timer text
+    this.timerText = this.add.text(16, 150, 'Time: 0.0s', {
+      font: '18px Arial',
+      fill: '#ffffff'
+    });
+
+    // Add best time text
+    this.bestTimeText = this.add.text(16, 180, `Best Time: ${this.bestTime === Infinity ? '--' : this.bestTime.toFixed(1)}s`, {
+      font: '18px Arial',
+      fill: '#ffff00'
+    });
+
     // Add background
     this.add.image(400, 300, 'sky');
 
@@ -69,6 +99,7 @@ export class MainScene extends Phaser.Scene {
     this.warrior.setBounce(0.2);
     this.warrior.setCollideWorldBounds(true);
     this.warrior.setDepth(10); // Make sure warrior appears above other elements
+    this.warrior.stunned = false; // Reset stun state
 
     // Make particles follow the warrior
     this.particles.startFollow(this.warrior);
@@ -314,6 +345,11 @@ export class MainScene extends Phaser.Scene {
     // Shake camera based on impact strength
     const shakeIntensity = Math.min(0.01 * bounceStrength, 0.05);
     this.cameras.main.shake(300, shakeIntensity);
+
+    // Check if all barriers are destroyed
+    if (wasDestroyed) {
+      this.checkAllBarriersDestroyed();
+    }
   }
 
   createImpactEffect(x, y, strength) {
@@ -473,7 +509,73 @@ export class MainScene extends Phaser.Scene {
     this.cooldownText.setScale(scale);
   }
 
+  checkAllBarriersDestroyed() {
+    const remainingBarriers = this.barriers.getChildren().filter(barrier => barrier.active);
+    if (remainingBarriers.length === 0) {
+      // Calculate final time
+      const endTime = Date.now();
+      const totalTime = (endTime - this.startTime) / 1000; // Convert to seconds
+
+      // Update best time if current time is better
+      if (totalTime < this.bestTime) {
+        this.bestTime = totalTime;
+        localStorage.setItem('bestTime', this.bestTime);
+      }
+
+      // Show completion screen
+      this.showCompletionScreen(totalTime);
+    }
+  }
+
+  showCompletionScreen(time) {
+    // Create semi-transparent background
+    const bg = this.add.rectangle(400, 300, 400, 300, 0x000000, 0.8);
+    bg.setOrigin(0.5);
+
+    // Add completion text
+    this.add.text(400, 200, 'Level Complete!', {
+      font: '32px Arial',
+      fill: '#ffffff'
+    }).setOrigin(0.5);
+
+    // Show time
+    this.add.text(400, 250, `Time: ${time.toFixed(1)}s`, {
+      font: '24px Arial',
+      fill: '#ffffff'
+    }).setOrigin(0.5);
+
+    // Show best time
+    this.add.text(400, 290, `Best Time: ${this.bestTime.toFixed(1)}s`, {
+      font: '24px Arial',
+      fill: '#ffff00'
+    }).setOrigin(0.5);
+
+    // Add restart button
+    const restartButton = this.add.text(400, 350, 'Click to Restart', {
+      font: '24px Arial',
+      fill: '#00ff00'
+    }).setOrigin(0.5);
+
+    // Make button interactive
+    restartButton.setInteractive();
+    restartButton.on('pointerdown', () => {
+      // Clean up any existing timers
+      if (this.cooldownTimer) {
+        this.cooldownTimer.remove();
+        this.cooldownTimer = null;
+      }
+      // Restart the scene
+      this.scene.restart();
+    });
+  }
+
   update() {
+    // Update timer
+    if (this.timerText) {
+      const currentTime = (Date.now() - this.startTime) / 1000;
+      this.timerText.setText(`Time: ${currentTime.toFixed(1)}s`);
+    }
+
     // Handle click/tap movement
     if (this.isMovingToTarget && this.targetPosition && !this.warrior.stunned) {
       // Calculate distance from warrior to target
