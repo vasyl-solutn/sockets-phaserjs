@@ -137,6 +137,10 @@ export class MainScene extends Phaser.Scene {
     this.warrior.setDepth(10); // Make sure warrior appears above other elements
     this.warrior.stunned = false; // Reset stun state
 
+    // Reduce drag to allow longer sliding after bounce
+    this.warrior.setDrag(20, 20); // Reduced from default values
+    this.warrior.setDamping(true);
+
     // Make particles follow the warrior
     this.particles.startFollow(this.warrior);
 
@@ -150,10 +154,30 @@ export class MainScene extends Phaser.Scene {
     // Set up collision between warrior and barriers
     this.physics.add.collider(this.warrior, this.barriers, this.handleBarrierCollision, null, this);
 
-    // Create only 3 barriers for testing
-    this.createBarrier(300, 200, 'weak', 5);    // Easy barrier
-    this.createBarrier(500, 300, 'medium', 12); // Medium barrier
-    this.createBarrier(200, 400, 'strong', 16); // Hard barrier
+    // Create more barriers with varied positions and health
+    // First row (top)
+    this.createBarrier(150, 150, 'weak', 5);
+    this.createBarrier(300, 120, 'medium', 10);
+    this.createBarrier(450, 150, 'weak', 7);
+    this.createBarrier(600, 130, 'strong', 15);
+
+    // Second row (upper middle)
+    this.createBarrier(120, 250, 'medium', 12);
+    this.createBarrier(270, 230, 'weak', 6);
+    this.createBarrier(420, 240, 'strong', 14);
+    this.createBarrier(570, 220, 'weak', 8);
+
+    // Third row (lower middle)
+    this.createBarrier(180, 350, 'strong', 16);
+    this.createBarrier(330, 370, 'medium', 11);
+    this.createBarrier(480, 360, 'weak', 5);
+    this.createBarrier(630, 380, 'medium', 13);
+
+    // Fourth row (bottom)
+    this.createBarrier(210, 450, 'weak', 7);
+    this.createBarrier(360, 470, 'strong', 15);
+    this.createBarrier(510, 460, 'medium', 10);
+    this.createBarrier(660, 480, 'weak', 6);
 
     // Create line for movement visualization
     this.movementLine = this.add.graphics();
@@ -350,6 +374,16 @@ export class MainScene extends Phaser.Scene {
     // Calculate bounce strength based on barrier's remaining health
     const bounceStrength = barrier.getStrength();
 
+    // Show damage text
+    this.showDamageText(barrier.x, barrier.y - 20, damage);
+
+    // Create impact effect
+    this.createImpactEffect(warrior.x, warrior.y, bounceStrength);
+
+    // Shake camera based on impact strength and click distance
+    const shakeIntensity = Math.min(0.01 * bounceStrength + (warrior.moveDistance / 2000), 0.05);
+    this.cameras.main.shake(300, shakeIntensity);
+
     if (wasDestroyed) {
       // If barrier was destroyed, continue movement with reduced power
       const powerReduction = barrier.health / 100; // Reduce power based on barrier's health
@@ -360,51 +394,36 @@ export class MainScene extends Phaser.Scene {
         warrior,
         warrior.x + warrior.moveDirection.x * warrior.moveDistance,
         warrior.y + warrior.moveDirection.y * warrior.moveDistance,
-        160
+        100
       );
 
-      // Create impact effect
-      this.createImpactEffect(warrior.x, warrior.y, bounceStrength);
-
-      // Shake camera based on impact strength and click distance
-      const shakeIntensity = Math.min(0.01 * bounceStrength + (warrior.moveDistance / 2000), 0.05);
-      this.cameras.main.shake(300, shakeIntensity);
+      // Check if all barriers are destroyed
+      this.checkAllBarriersDestroyed();
     } else {
-      // If barrier wasn't destroyed, bounce back
-      const bounceForce = 300 + (bounceStrength * 30) + (warrior.moveDistance * 0.5);
+      // For barriers that don't get destroyed:
+      // 1. Lower bounce speed with greater distance
+      // 2. Make bounce distance longer by increasing stun time and reducing force
+
+      // Calculate a gentler bounce force for slower but longer distance bounce
+      const bounceForce = (40 + (bounceStrength * 5) + (warrior.moveDistance * 0.075)); // Reduced by half
+
+      // Apply the bounce velocity
       warrior.setVelocity(
         -warrior.moveDirection.x * bounceForce,
         -warrior.moveDirection.y * bounceForce * 0.5
       );
 
-      // Add a short stun effect that stops movement
+      // Add a longer stun effect to allow more bounce distance
       warrior.stunned = true;
       this.isMovingToTarget = false;
 
-      // Remove stun after a short delay
-      this.time.delayedCall(300, () => {
+      // Longer stun time means the warrior will slide further before player can control again
+      this.time.delayedCall(800, () => {
         warrior.stunned = false;
       });
 
-      // Create impact effect
-      this.createImpactEffect(warrior.x, warrior.y, bounceStrength);
-
-      // Shake camera based on impact strength and click distance
-      const shakeIntensity = Math.min(0.01 * bounceStrength + (warrior.moveDistance / 2000), 0.05);
-      this.cameras.main.shake(300, shakeIntensity);
-    }
-
-    // Show damage text
-    this.showDamageText(barrier.x, barrier.y - 20, damage);
-
-    // Reset warrior move distance if not continuing movement
-    if (!wasDestroyed) {
+      // Reset warrior move distance
       warrior.moveDistance = 0;
-    }
-
-    // Check if all barriers are destroyed
-    if (wasDestroyed) {
-      this.checkAllBarriersDestroyed();
     }
   }
 
@@ -588,8 +607,8 @@ export class MainScene extends Phaser.Scene {
       );
     }
 
-    // Calculate fill percentage (max speed is 300)
-    const fillPercentage = Math.min(currentSpeed / 300, 1);
+    // Calculate fill percentage (max speed is now 100 instead of 300)
+    const fillPercentage = Math.min(currentSpeed / 100, 1);
     const width = 150 * fillPercentage;
 
     // Choose color based on speed
@@ -720,7 +739,7 @@ export class MainScene extends Phaser.Scene {
           this.warrior,
           this.targetPosition.x,
           this.targetPosition.y,
-          160  // Reduced from 300 to 160
+          100  // Reduced from 160 to 100 for slower movement
         );
 
         // Update animation based on movement direction
@@ -740,12 +759,12 @@ export class MainScene extends Phaser.Scene {
     // Handle keyboard movement with WASD (only if not stunned)
     if (!this.warrior.stunned) {
       if (keyA.isDown) {
-        this.warrior.setVelocityX(-160); // Reduced from -300 to -160
+        this.warrior.setVelocityX(-100); // Reduced from -160 to -100
         this.warrior.anims.play('left', true);
         this.isMovingToTarget = false; // Cancel click movement
       }
       else if (keyD.isDown) {
-        this.warrior.setVelocityX(160); // Reduced from 300 to 160
+        this.warrior.setVelocityX(100); // Reduced from 160 to 100
         this.warrior.anims.play('right', true);
         this.isMovingToTarget = false; // Cancel click movement
       }
@@ -757,7 +776,7 @@ export class MainScene extends Phaser.Scene {
 
       // Jump when W key is pressed and warrior is on ground
       if (keyW.isDown && this.warrior.body.touching.down) {
-        this.warrior.setVelocityY(-330);
+        this.warrior.setVelocityY(-250); // Reduced from -330 to -250
         this.isMovingToTarget = false; // Cancel click movement
       }
     }
